@@ -336,6 +336,42 @@ public class SourceViewModel extends ViewModel {
         OkGo.getInstance().cancelTag(categoryRequestTag);
     }
 
+    public interface ActionResult {
+        void onResult(String json, String action);
+    }
+
+    /**
+     * 调用 type=3 源站的 action 接口。用于「配置中心」这类 action 卡片：
+     * 卡片点下去把 vod.action 交给 spider.action()，返回值一般是
+     * {"msg":".."} 或 {"web":{"url":..,"mode":..,"cookie":[..]}}，由 ActionResultDialog 渲染。
+     */
+    public void action(final SiteBean bean, final String act, final ActionResult cb) {
+        if (bean == null || TextUtils.isEmpty(act)) {
+            if (cb != null) cb.onResult(null, act);
+            return;
+        }
+        Runnable task = () -> {
+            String json = null;
+            try {
+                Spider sp = ApiConfig.getInstance().getCSP(bean);
+                if (sp != null) json = sp.action(act);
+            } catch (Throwable th) {
+                L.w("action() failed key=" + bean.getKey() + " act=" + act + " err=" + th);
+            }
+            final String out = json;
+            new Handler(Looper.getMainLooper()).post(() -> {
+                if (cb != null) cb.onResult(out, act);
+            });
+        };
+        try {
+            if (mExecutorService != null) mExecutorService.execute(task);
+            else task.run();
+        } catch (Throwable th) {
+            L.w("action() submit failed " + th);
+            task.run();
+        }
+    }
+
     public void getSort(String sourceKey) {
         final int requestId = ++sortRequestId;
         OkGo.getInstance().cancelTag(sortRequestTag);

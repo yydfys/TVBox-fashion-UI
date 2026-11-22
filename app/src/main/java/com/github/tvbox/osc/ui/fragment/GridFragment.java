@@ -14,6 +14,8 @@ import com.github.tvbox.osc.base.BaseLazyFragment;
 import com.github.tvbox.osc.bean.AbsXml;
 import com.github.tvbox.osc.bean.Movie;
 import com.github.tvbox.osc.bean.MovieSort;
+import com.github.tvbox.osc.bean.SiteBean;
+import com.github.tvbox.osc.ui.dialog.ActionResultDialog;
 import com.github.tvbox.osc.ui.activity.SearchActivity;
 import com.github.tvbox.osc.ui.activity.HomeActivity;
 import com.github.tvbox.osc.ui.adapter.GridAdapter;
@@ -249,6 +251,11 @@ public class GridFragment extends BaseLazyFragment {
             public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
                 FastClickCheckUtil.check(view);
                 Movie.Video video = mGridAdapter.getData().get(position);
+                // 「配置中心」这类动作卡片：action 非空则直接调 spider.action()，不进详情
+                if (video != null && video.action != null && !video.action.isEmpty()) {
+                    doAction(video);
+                    return;
+                }
                 if (isFolder(video)) {
                     Bundle bundle = new Bundle();
                     bundle.putString("folderId", video.id);
@@ -267,6 +274,17 @@ public class GridFragment extends BaseLazyFragment {
         });
         mGridAdapter.setLoadMoreView(new LoadMoreView());
         setLoadSir(mGridView);
+    }
+
+    private void doAction(Movie.Video video) {
+        if (sourceViewModel == null) return;
+        SiteBean bean = video.sourceKey == null ? null : ApiConfig.getInstance().getSiteBean(video.sourceKey);
+        if (bean == null) bean = ApiConfig.getInstance().getHomeBean();
+        if (bean == null) return;
+        L.w("doAction key=" + video.sourceKey + " act=" + video.action + " name=" + video.name);
+        sourceViewModel.action(bean, video.action, (json, act) -> {
+            if (getActivity() != null && isAdded()) ActionResultDialog.show(getActivity(), json);
+        });
     }
 
     private boolean isFolder(Movie.Video video) {

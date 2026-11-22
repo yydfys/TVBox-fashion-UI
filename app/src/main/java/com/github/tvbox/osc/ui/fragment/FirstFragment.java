@@ -38,6 +38,7 @@ import com.github.tvbox.osc.ui.activity.HomeActivity;
 import com.github.tvbox.osc.ui.activity.LivePlayActivity;
 import com.github.tvbox.osc.ui.activity.SearchActivity;
 import com.github.tvbox.osc.ui.activity.SettingActivity;
+import com.github.tvbox.osc.ui.dialog.ActionResultDialog;
 import com.github.tvbox.osc.ui.adapter.HomeHotVodAdapter;
 import com.github.tvbox.osc.util.PosterPreloader;
 import com.github.tvbox.osc.ui.tv.widget.HomeCardRecyclerView;
@@ -410,6 +411,19 @@ public class FirstFragment extends BaseLazyFragment implements View.OnClickListe
                 applyCardSelected(view, position);
 
                 return;
+            }
+            // 「配置中心」动作卡片：直接调 spider.action()，不进详情
+            if (!NullUtil.isNull(vod.action)) {
+                SiteBean actBean = NullUtil.isNull(vod.sourceKey)
+                        ? ApiConfig.getInstance().getHomeBean()
+                        : ApiConfig.getInstance().getSiteBean(vod.sourceKey);
+                if (actBean != null && mSourceViewModel != null) {
+                    Toast.makeText(mContext, "正在打开配置中心…", Toast.LENGTH_SHORT).show();
+                    mSourceViewModel.action(actBean, vod.action, (json, act) -> {
+                        if (mActivity != null) ActionResultDialog.show(mActivity, json);
+                    });
+                    return;
+                }
             }
             if (!NullUtil.isNull(vod.id) && !NullUtil.isNull(vod.sourceKey)
                     && ApiConfig.getInstance().getSiteBean(vod.sourceKey) != null) {

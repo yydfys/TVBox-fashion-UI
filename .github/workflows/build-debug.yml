@@ -1,0 +1,54 @@
+name: Build Debug APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - name: Set up Python 3.8 (required by Chaquopy 12)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+
+      - name: Prepare Android SDK + local.properties
+        run: |
+          set -e
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(ls -1d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)"
+          fi
+          echo "sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-30" "build-tools;30.0.3"
+          PY="$(python3 -c 'import sys;print(sys.executable)')"
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "chaquopy.buildPython=$PY" >> local.properties
+          cat local.properties
+          python3 --version
+
+      - name: Gradle assembleDebug
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZMovie-fashion-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

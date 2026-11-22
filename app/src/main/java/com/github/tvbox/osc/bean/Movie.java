@@ -64,6 +64,9 @@ public class Movie implements Serializable {
         /** JSON 源目录项标记，兼容 folder/floder */
         public String tag;
 
+        /** 「配置中心」这类站点的动作卡片：非空表示点击时不进详情，而是调用 spider.action(该值) */
+        public String action;
+
         public String sourceKey;
         public boolean isMore = false;
         public boolean hasPlayableUrls = false;
