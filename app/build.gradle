@@ -18,7 +18,7 @@ task verifyReleaseSigning {
         def certificate = store.getCertificate(releaseSigning.keyAlias)
         def fingerprint = certificate == null ? '' : java.security.MessageDigest.getInstance('SHA-256')
                 .digest(certificate.encoded).encodeHex().toString()
-        if (fingerprint != '195cc65bd18f8e04184423ad84306a9ed9582f4f0be5cf7d26b19371e4bcba62') {
+        if (fingerprint != '4502b0f9e0e491bcca0b9f986759d053cc3a9a71e6e8411f01952a2222d529bf') {
             throw new GradleException('Release certificate differs from the installed ZMovie certificate.')
         }
     }
@@ -35,8 +35,9 @@ android {
         applicationId 'com.studio.osc'
         minSdkVersion 21
         targetSdkVersion 28
-        versionCode 227
-        versionName '1.7.28'
+        // 版本号可由 CI 覆盖：-PzmovieVc=1234 -PzmovieVn=1.8.0
+        versionCode project.hasProperty('zmovieVc') ? project.zmovieVc.toInteger() : 227
+        versionName project.hasProperty('zmovieVn') ? project.zmovieVn : '1.7.28'
         multiDexEnabled true
         //设置room的Schema的位置
         javaCompileOptions {

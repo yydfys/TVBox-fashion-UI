@@ -20,11 +20,11 @@ import okhttp3.Response;
 
 /** Public release traffic only. Never uses the playback client's relaxed TLS settings. */
 public final class UpdateClient {
-    /** 主更新源：查询 Gitee 发行版，再读取该版本的清单附件。 */
-    public static final String GITEE_REPOSITORY = "https://gitee.com/ad159753/TVBox-fashion-UI";
-    public static final String GITEE_LATEST_RELEASE_URL = "https://gitee.com/api/v5/repos/ad159753/TVBox-fashion-UI/releases/latest";
-    /** 备用更新源：GitHub 发行版，沿用原有三条加速线路。 */
-    public static final String GITHUB_REPOSITORY = "https://github.com/zongchenghuan0318/TVBox-fashion-UI";
+    /** 主更新源：我们自己的 NAS 清单（国内直连，不依赖 GitHub）。 */
+    public static final String MANIFEST_URL_PRIMARY =
+            "https://yydf.iepose.cn/youer/TVBox-fashion-UI/releases/update.json";
+    /** 备用更新源：我们自己的 GitHub 发行版清单（带加速前缀）。 */
+    public static final String GITHUB_REPOSITORY = "https://github.com/yydfys/TVBox-fashion-UI";
     public static final String GITHUB_MANIFEST_URL = GITHUB_REPOSITORY + "/releases/latest/download/update.json";
     private static final String[] GITHUB_PREFIXES = {"https://gh-proxy.com/", "https://ghfast.top/", ""};
     private final OkHttpClient metadata;
@@ -62,17 +62,11 @@ public final class UpdateClient {
             }
         }
 
-        /** 主地址可以是 Gitee 或 GitHub 的对应版本发行包，兼容只含 GitHub 地址的旧清单。 */
+        /** 安装包地址：只接受 https 且以 .apk 结尾（自家 NAS 清单 / 自家 GitHub 发行包都收）。 */
         private static boolean isReleaseApk(String url, String versionName) {
-            return isGiteeApk(url, versionName) || isGithubApk(url, versionName);
-        }
-
-        private static boolean isGiteeApk(String url, String versionName) {
-            return (GITEE_REPOSITORY + "/releases/download/v" + versionName + "/Z.apk").equals(url);
-        }
-
-        private static boolean isGithubApk(String url, String versionName) {
-            return (GITHUB_REPOSITORY + "/releases/download/v" + versionName + "/Z.apk").equals(url);
+            if (url == null) return false;
+            String u = url.trim();
+            return u.startsWith("https://") && u.toLowerCase().endsWith(".apk") && u.contains(versionName);
         }
     }
 
@@ -125,9 +119,11 @@ public final class UpdateClient {
     public Info fetchInfo() throws IOException {
         IOException last = null;
         Info newest = null;
+        // 1) 自建清单（NAS）
         try {
-            newest = readGiteeRelease();
+            newest = readManifest(MANIFEST_URL_PRIMARY);
         } catch (IOException e) { last = e; }
+        // 2) 备用：自家 GitHub 发行版清单（含加速前缀）
         for (String prefix : GITHUB_PREFIXES) {
             checkCancelled();
             try {

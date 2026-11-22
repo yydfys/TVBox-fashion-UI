@@ -1,0 +1,151 @@
+name: Build Release APK
+
+# 只允许手动触发，避免误发版
+on:
+  workflow_dispatch:
+    inputs:
+      versionName:
+        description: '版本名（如 1.7.29）'
+        required: true
+        default: '1.7.28'
+      changelog:
+        description: '更新说明（留空自动取最近提交）'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - name: Set up Python 3.8 (required by Chaquopy 12)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+
+      - name: Prepare Android SDK + local.properties
+        run: |
+          set -e
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(ls -1d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)"
+          fi
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-30" "build-tools;30.0.3"
+          PY="$(python3 -c 'import sys;print(sys.executable)')"
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "chaquopy.buildPython=$PY" >> local.properties
+          python3 --version
+
+      - name: Restore release keystore
+        run: |
+          set -e
+          echo "${{ secrets.ZMOVIE_KEYSTORE_BASE64 }}" | base64 -d > zmovie-release.jks
+          cat > release-signing.properties <<EOF
+          storeFile=zmovie-release.jks
+          storePassword=${{ secrets.ZMOVIE_STORE_PASSWORD }}
+          keyAlias=${{ secrets.ZMOVIE_KEY_ALIAS }}
+          keyPassword=${{ secrets.ZMOVIE_KEY_PASSWORD }}
+          EOF
+          keytool -list -keystore zmovie-release.jks -storepass "${{ secrets.ZMOVIE_STORE_PASSWORD }}" -alias "${{ secrets.ZMOVIE_KEY_ALIAS }}" | tail -2
+
+      - name: Compute version
+        id: ver
+        run: |
+          set -e
+          VN="${{ inputs.versionName }}"
+          VC=$(( 227 + $(git rev-list --count HEAD) ))
+          echo "vn=$VN" >> $GITHUB_OUTPUT
+          echo "vc=$VC" >> $GITHUB_OUTPUT
+          echo "tag=v$VN-$VC" >> $GITHUB_OUTPUT
+          echo "版本: v$VN ($VC)  tag: v$VN-$VC"
+
+      - name: Gradle assembleRelease
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease             -PzmovieVc=${{ steps.ver.outputs.vc }}             -PzmovieVn=${{ steps.ver.outputs.vn }}             --no-daemon --stacktrace
+
+      - name: Verify signature
+        run: |
+          set -e
+          APK="$(ls -1 app/build/outputs/apk/release/*.apk | head -1)"
+          BT="$(ls -1d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$BT/apksigner" verify --print-certs "$APK" | head -5
+
+      - name: Prepare release assets
+        id: assets
+        env:
+          VN: ${{ steps.ver.outputs.vn }}
+          VC: ${{ steps.ver.outputs.vc }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          CHANGELOG_IN: ${{ inputs.changelog }}
+        run: |
+          set -e
+          mkdir -p dist
+          SRC="$(ls -1 app/build/outputs/apk/release/*.apk | head -1)"
+          NAME="ZMovie-${VN}-${VC}.apk"
+          cp "$SRC" "dist/$NAME"
+          SHA=$(sha256sum "dist/$NAME" | cut -d' ' -f1)
+          SIZE=$(stat -c%s "dist/$NAME")
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          NOTES="$CHANGELOG_IN"
+          if [ -z "$NOTES" ]; then
+            NOTES=$(git log -8 --pretty=format:'· %s' | sed '/^$/d')
+          fi
+          export VN VC SHA SIZE NAME NOTES
+          python3 - <<'PY'
+          import json, os
+          vn = os.environ["VN"]; vc = int(os.environ["VC"])
+          sha = os.environ["SHA"]; size = int(os.environ["SIZE"]); name = os.environ["NAME"]
+          notes = os.environ.get("NOTES", "")[:900]
+          data = {
+              "versionCode": vc,
+              "versionName": vn,
+              "changelog": notes,
+              "apkUrl": "https://yydf.iepose.cn/youer/TVBox-fashion-UI/releases/" + name,
+              "apkUrlFallback": "https://github.com/yydfys/TVBox-fashion-UI/releases/download/v%s-%d/%s" % (vn, vc, name),
+              "sha256": sha,
+              "size": size,
+          }
+          open("dist/update.json", "w", encoding="utf-8").write(json.dumps(data, ensure_ascii=False, indent=2))
+          print(json.dumps(data, ensure_ascii=False, indent=2))
+          PY
+          ls -la dist
+          echo "--- 资产就绪 ---"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zmovie-release
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: Z影视 v${{ steps.ver.outputs.vn }} (${{ steps.ver.outputs.vc }})
+          body: |
+            ## Z影视 v${{ steps.ver.outputs.vn }}
+            ${{ inputs.changelog }}
+
+            - 版本号（versionCode）：${{ steps.ver.outputs.vc }}
+            - SHA-256：`${{ steps.assets.outputs.sha }}`
+          files: |
+            dist/*.apk
+            dist/update.json
+          fail_on_unmatched_files: true
