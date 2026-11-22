@@ -1,16 +1,16 @@
 package com.github.tvbox.osc.ui.dialog;
 
 import android.app.Activity;
-import android.content.Intent;
-import android.net.Uri;
-import android.view.View;
 import android.app.Dialog;
+import android.content.Intent;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
@@ -19,7 +19,9 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.github.tvbox.osc.util.ZLog;
@@ -35,16 +37,20 @@ import java.util.Date;
 import java.util.Locale;
 
 /**
- * 「配置中心」这类 action 卡片的结果渲染器。
+ * 「配置中心」这类 action 卡片的结果渲染器（二维码优化版 qr-t4）。
  *
- * 站点 spider 的 action(act) 返回值约定（与主流壳一致）：
- *   {"msg":"提示文字"}
+ * 站点 spider 的 action(act) 返回值约定：
+ *   {"msg":"提示文字 / HTML / 图片地址 / data:image"}
  *   {"web":{"url":"https://...","mode":"browser|view","cookie":[{"url":"..","keys":{"k":"v"}}]}}
  *
- * 这里只做「显示」：有 web 就开内嵌 WebView 让页面自己跑（页面内部的网盘授权/保存逻辑由页面自身完成），
- * 只有 msg 就弹个文本。原始 JSON 同时落盘到 files/action_log/，方便按真实协议继续适配。
+ * 二维码页面的关键约束：内容必须能用满整屏高度，且可缩放/可滚动，
+ * 否则二维码下半部分会被壳自己的标题栏/底栏/系统栏压掉 → 扫不出来。
+ * 所以这里：全屏 + 无底栏 + 顶部悬浮小按钮 + 允许双指缩放 + 载入后注入自适应样式。
  */
 public class ActionResultDialog extends Dialog {
+
+    /** 构建标记：用来在 app.log 里确认装的是哪一版 */
+    private static final String BUILD_TAG = "qr-t4";
 
     private final String mRaw;
     private String mUrl;
@@ -52,7 +58,6 @@ public class ActionResultDialog extends Dialog {
     private JSONArray mCookie;
 
     private WebView mWebView;
-    private LinearLayout mRoot;
 
     public ActionResultDialog(Activity activity, String rawJson) {
         super(activity, android.R.style.Theme_Translucent_NoTitleBar);
@@ -78,40 +83,109 @@ public class ActionResultDialog extends Dialog {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        ZLog.i("action 返回 url=" + (mUrl == null ? "" : mUrl)
-                + " cookieGroups=" + (mCookie == null ? 0 : mCookie.length())
-                + " msgLen=" + (mMsg == null ? 0 : mMsg.length())
-                + " raw=" + (mRaw == null ? "null" : mRaw.substring(0, Math.min(800, mRaw.length()))));
         super.onCreate(savedInstanceState);
         Activity act = getOwnerActivity();
         Window win = getWindow();
         if (win != null) {
             win.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
             win.setBackgroundDrawableResource(android.R.color.transparent);
+            // 全屏：状态栏也吃掉，避免页面底部被系统栏压住
+            win.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN);
         }
 
-        mRoot = new LinearLayout(act);
-        mRoot.setOrientation(LinearLayout.VERTICAL);
-        mRoot.setBackgroundColor(Color.parseColor("#F2101215"));
-        mRoot.setPadding(dp(10), dp(10), dp(10), dp(8));
+        ZLog.i("BUILD=" + BUILD_TAG + " action 返回 url=" + (mUrl == null ? "" : mUrl)
+                + " cookieGroups=" + (mCookie == null ? 0 : mCookie.length())
+                + " msgLen=" + (mMsg == null ? 0 : mMsg.length())
+                + " raw=" + (mRaw == null ? "null" : mRaw.substring(0, Math.min(800, mRaw.length()))));
+
+        FrameLayout root = new FrameLayout(act);
+        root.setBackgroundColor(Color.parseColor("#FF0E1013"));
+
+        boolean hasHtmlInMsg = !TextUtils.isEmpty(mMsg) && mMsg.contains("<")
+                && (mMsg.contains("<img") || mMsg.contains("<div") || mMsg.contains("<html")
+                    || mMsg.contains("<body") || mMsg.contains("<table") || mMsg.contains("<canvas")
+                    || mMsg.contains("<svg"));
+        boolean hasImgInMsg = !TextUtils.isEmpty(mMsg)
+                && (mMsg.contains("data:image")
+                    || mMsg.matches("(?s)^\\s*https?://\\S+\\.(png|jpg|jpeg|gif|webp|bmp).*$")
+                    || mMsg.matches("(?s)^\\s*[A-Za-z0-9+/=\\s]{400,}$"));   // 纯 base64 图片
+
+        if (!TextUtils.isEmpty(mUrl) || hasHtmlInMsg || hasImgInMsg) {
+            mWebView = new WebView(act);
+            WebSettings ws = mWebView.getSettings();
+            ws.setJavaScriptEnabled(true);
+            ws.setDomStorageEnabled(true);
+            ws.setDatabaseEnabled(true);
+            ws.setSupportZoom(true);
+            ws.setBuiltInZoomControls(true);
+            ws.setDisplayZoomControls(false);
+            ws.setUseWideViewPort(true);
+            // 关键：不要 overview，否则整页被缩进一屏，二维码被压成小块且下半截被裁
+            ws.setLoadWithOverviewMode(false);
+            ws.setJavaScriptCanOpenWindowsAutomatically(true);
+            ws.setMediaPlaybackRequiresUserGesture(false);
+            ws.setTextZoom(100);
+            if (android.os.Build.VERSION.SDK_INT >= 21) {
+                ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+            }
+            String ua = ws.getUserAgentString();
+            if (ua != null && !ua.contains(" Mobile")) ws.setUserAgentString(ua + " Mobile");
+            mWebView.setVerticalScrollBarEnabled(true);
+            mWebView.setHorizontalScrollBarEnabled(false);
+            mWebView.setBackgroundColor(Color.parseColor("#FF0E1013"));
+            mWebView.setWebChromeClient(new WebChromeClient());
+            mWebView.setWebViewClient(new WebViewClient() {
+                @Override
+                public void onPageFinished(WebView view, String url) {
+                    injectFit(view);
+                }
+            });
+            applyCookies();
+            root.addView(mWebView, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+            if (!TextUtils.isEmpty(mUrl)) {
+                mWebView.loadUrl(mUrl);
+            } else if (hasHtmlInMsg) {
+                mWebView.loadDataWithBaseURL(null, wrapHtml(mMsg), "text/html", "utf-8", null);
+            } else {
+                String src = mMsg.trim();
+                if (!src.startsWith("data:") && !src.startsWith("http")) {
+                    src = "data:image/png;base64," + src.replaceAll("\\s", "");
+                }
+                mWebView.loadDataWithBaseURL(null, wrapHtml("<img src=\"" + src + "\"/>"),
+                        "text/html", "utf-8", null);
+            }
+        } else {
+            ScrollView sv = new ScrollView(act);
+            TextView content = new TextView(act);
+            content.setText(TextUtils.isEmpty(mMsg) ? ("未识别返回：\n" + safeRaw()) : mMsg);
+            content.setTextColor(Color.parseColor("#DDDDDD"));
+            content.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            content.setGravity(Gravity.START);
+            content.setPadding(dp(14), dp(56), dp(14), dp(16));
+            content.setTextIsSelectable(true);
+            sv.addView(content);
+            root.addView(sv, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+
+        // 顶部悬浮条：标题 + 浏览器打开 + 关闭。悬浮在内容之上、不占内容高度
+        LinearLayout bar = new LinearLayout(act);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(10), dp(6), dp(10), dp(6));
+        bar.setBackgroundColor(Color.parseColor("#B3121519"));
 
         TextView title = new TextView(act);
         title.setText("配置中心");
         title.setTextColor(Color.WHITE);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-        title.setGravity(Gravity.START);
-        LinearLayout titleRow = new LinearLayout(act);
-        titleRow.setOrientation(LinearLayout.HORIZONTAL);
-        titleRow.setGravity(Gravity.CENTER_VERTICAL);
-        titleRow.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        bar.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
         if (!TextUtils.isEmpty(mUrl)) {
-            TextView open = new TextView(act);
-            open.setText("浏览器打开");
-            open.setTextColor(Color.WHITE);
-            open.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-            open.setPadding(dp(10), dp(4), dp(10), dp(4));
-            open.setBackgroundColor(Color.parseColor("#66FFFFFF"));
-            open.setFocusable(true);
+            TextView open = chip(act, "浏览器打开");
             open.setOnClickListener(v -> {
                 try {
                     Intent it = new Intent(Intent.ACTION_VIEW, Uri.parse(mUrl));
@@ -122,84 +196,71 @@ public class ActionResultDialog extends Dialog {
                     L.w("open browser failed " + th);
                 }
             });
-            titleRow.addView(open, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            olp.leftMargin = dp(8);
+            bar.addView(open, olp);
         }
-        mRoot.addView(titleRow, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        boolean hasHtmlInMsg = !TextUtils.isEmpty(mMsg)
-                && (mMsg.contains("<") && (mMsg.contains("<img") || mMsg.contains("<div")
-                    || mMsg.contains("<html") || mMsg.contains("<body") || mMsg.contains("<table")));
-        boolean hasImgInMsg = !TextUtils.isEmpty(mMsg)
-                && (mMsg.contains("data:image") || mMsg.matches("(?s)^\\s*https?://\\S+\\.(png|jpg|jpeg|gif|webp).*$"));
-        if (!TextUtils.isEmpty(mUrl) || hasHtmlInMsg || hasImgInMsg) {
-            mWebView = new WebView(act);
-            WebSettings ws = mWebView.getSettings();
-            ws.setJavaScriptEnabled(true);
-            ws.setDomStorageEnabled(true);
-            ws.setDatabaseEnabled(true);
-            // 关键：允许缩放，二维码页面才能双指放大到可扫
-            ws.setSupportZoom(true);
-            ws.setBuiltInZoomControls(true);
-            ws.setDisplayZoomControls(false);
-            ws.setUseWideViewPort(true);
-            ws.setLoadWithOverviewMode(true);
-            ws.setJavaScriptCanOpenWindowsAutomatically(true);
-            ws.setMediaPlaybackRequiresUserGesture(false);
-            if (android.os.Build.VERSION.SDK_INT >= 21) {
-                ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-            }
-            String ua = ws.getUserAgentString();
-            if (ua != null && !ua.contains(" Mobile")) {
-                ws.setUserAgentString(ua + " Mobile");
-            }
-            ws.setAllowFileAccess(true);
-            mWebView.setWebViewClient(new WebViewClient());
-            mWebView.setWebChromeClient(new WebChromeClient());
-            mWebView.setInitialScale(0);
-            applyCookies();
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-            lp.topMargin = dp(6);
-            mRoot.addView(mWebView, lp);
-            if (!TextUtils.isEmpty(mUrl)) {
-                mWebView.loadUrl(mUrl);
-            } else if (hasHtmlInMsg) {
-                mWebView.loadDataWithBaseURL(mUrl == null ? null : mUrl, wrapHtml(mMsg), "text/html", "utf-8", null);
-            } else {
-                mWebView.loadDataWithBaseURL(null, wrapHtml("<img src=\"" + mMsg.trim() + "\" style=\"width:100%;height:auto\"/>"),
-                        "text/html", "utf-8", null);
-            }
-        } else {
-            TextView content = new TextView(act);
-            content.setText(TextUtils.isEmpty(mMsg) ? ("未识别返回：\n" + safeRaw()) : mMsg);
-            content.setTextColor(Color.parseColor("#DDDDDD"));
-            content.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-            content.setGravity(Gravity.START);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-            lp.topMargin = dp(12);
-            mRoot.addView(content, lp);
-        }
-
-        TextView close = new TextView(act);
-        close.setText("关闭");
-        close.setTextColor(Color.WHITE);
-        close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        close.setGravity(Gravity.CENTER);
-        close.setFocusable(true);
-        close.setBackgroundColor(Color.parseColor("#66FFFFFF"));
+        TextView close = chip(act, "关闭");
         close.setOnClickListener(v -> dismiss());
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(38));
-        clp.topMargin = dp(12);
-        mRoot.addView(close, clp);
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        clp.leftMargin = dp(8);
+        bar.addView(close, clp);
 
-        setContentView(mRoot, new ViewGroup.LayoutParams(
+        FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        barLp.gravity = Gravity.TOP;
+        root.addView(bar, barLp);
+
+        setContentView(root, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         close.requestFocus();
         dumpRaw();
+    }
+
+    private TextView chip(Activity act, String text) {
+        TextView tv = new TextView(act);
+        tv.setText(text);
+        tv.setTextColor(Color.WHITE);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        tv.setPadding(dp(12), dp(6), dp(12), dp(6));
+        tv.setBackgroundColor(Color.parseColor("#66FFFFFF"));
+        tv.setFocusable(true);
+        return tv;
+    }
+
+    /** 载入后注入自适应样式：图片/画布不超出屏宽，页面可纵向滚动，不强行缩放整页 */
+    private void injectFit(WebView view) {
+        try {
+            String js = "(function(){try{"
+                    + "var s=document.createElement('style');"
+                    + "s.type='text/css';"
+                    + "s.innerHTML='html,body{margin:0!important;padding-top:44px!important;overflow-x:hidden!important;}"
+                    + "img,canvas,svg,video{max-width:100%!important;height:auto!important;display:block!important;margin:0 auto!important;}"
+                    + "table{width:100%!important;}td{word-break:break-all;}';"
+                    + "(document.head||document.documentElement).appendChild(s);"
+                    + "var vp=document.querySelector('meta[name=viewport]');"
+                    + "if(!vp){vp=document.createElement('meta');vp.name='viewport';"
+                    + "vp.content='width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes';"
+                    + "(document.head||document.documentElement).appendChild(vp);}"
+                    + "}catch(e){}})();";
+            view.evaluateJavascript(js, null);
+        } catch (Throwable th) {
+            L.w("injectFit failed " + th);
+        }
+    }
+
+    /** 让页面按屏幕宽度自适应，图片不超出屏幕，二维码居中 */
+    private String wrapHtml(String body) {
+        if (body == null) body = "";
+        if (body.toLowerCase().contains("<html")) return body;
+        return "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes\">"
+                + "<style>html,body{margin:0;padding:48px 10px 16px;background:#0E1013;color:#ddd;font-size:16px;}"
+                + "img,canvas,svg{max-width:100%;height:auto;display:block;margin:0 auto;}"
+                + "table{width:100%;border-collapse:collapse;}td{word-break:break-all;}"
+                + "pre,code{white-space:pre-wrap;word-break:break-all;}</style></head><body>"
+                + body + "</body></html>";
     }
 
     private void applyCookies() {
@@ -223,18 +284,6 @@ public class ActionResultDialog extends Dialog {
         } catch (Throwable th) {
             L.w("ActionResultDialog cookie failed: " + th);
         }
-    }
-
-    /** 让页面按屏幕宽度自适应，图片不超出屏幕，二维码居中且尽量大 */
-    private String wrapHtml(String body) {
-        if (body == null) body = "";
-        if (body.toLowerCase().contains("<html")) return body;
-        return "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-                + "<style>html,body{margin:0;padding:8px;background:#101215;color:#ddd;font-size:16px;}"
-                + "img{max-width:100%;height:auto;display:block;margin:0 auto;}"
-                + "table{width:100%;border-collapse:collapse;}td{word-break:break-all;}"
-                + "pre,code{white-space:pre-wrap;word-break:break-all;}</style></head><body>"
-                + body + "</body></html>";
     }
 
     private String safeRaw() {
