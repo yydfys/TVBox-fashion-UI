@@ -1204,7 +1204,7 @@ public class SourceViewModel extends ViewModel {
                     if (spider != null) {
                         String json = spider.playerContent(playFlag, url, ApiConfig.getInstance().getmVipFlagList());
                         ZLog.i("playerContent key=" + sourceKey + " flag=" + playFlag
-                                + " url=" + cutForLog(url) + " -> " + cutForLog(json));
+                                + " reqUrl=" + cutForLog(url) + " -> " + summarizePlayerJson(json));
                         if (json != null && !json.trim().isEmpty()) {
                             JSONObject result = new JSONObject(json);
                             result.put("key", url);
@@ -1266,7 +1266,7 @@ public class SourceViewModel extends ViewModel {
                 }
                 String out = spider.playerContent(playFlag, url, ApiConfig.getInstance().getmVipFlagList());
                 ZLog.i("playerContent key=" + sourceKey + " flag=" + playFlag
-                        + " url=" + cutForLog(url) + " -> " + cutForLog(out));
+                        + " reqUrl=" + cutForLog(url) + " -> " + summarizePlayerJson(out));
                 return out;
             });
             activePlayContentTask = task;
@@ -1571,5 +1571,25 @@ public class SourceViewModel extends ViewModel {
     private static String cutForLog(String text) {
         if (text == null) return "null";
         return text.length() > 600 ? (text.substring(0, 600) + "…(" + text.length() + "B)") : text;
+    }
+
+    /** 播放返回的结构化摘要：parse / keys / header 类型长度 / url（不会被超长 Cookie 挤掉） */
+    private static String summarizePlayerJson(String json) {
+        if (json == null) return "null";
+        try {
+            org.json.JSONObject o = new org.json.JSONObject(json);
+            StringBuilder keys = new StringBuilder();
+            java.util.Iterator<String> it = o.keys();
+            while (it.hasNext()) keys.append(it.next()).append(',');
+            Object h = o.opt("header");
+            return "parse=" + o.optInt("parse", 0)
+                    + " keys=[" + keys + "]"
+                    + " headerType=" + (h == null ? "null" : (h instanceof org.json.JSONObject ? "object" : "string"))
+                    + " headerLen=" + (h == null ? 0 : String.valueOf(h).length())
+                    + " hasCookie=" + (h != null && String.valueOf(h).toLowerCase().contains("cookie"))
+                    + " url=" + cutForLog(o.optString("url", ""));
+        } catch (Throwable th) {
+            return cutForLog(json);
+        }
     }
 }

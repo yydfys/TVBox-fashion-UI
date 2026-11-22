@@ -788,6 +788,7 @@ public class PlayActivity extends BaseActivity  implements View.OnClickListener 
 
     private void playVideo(final String url, HashMap<String, String> headers) {
         L.d("playVideo() stop if url==null, url=" + url);
+        ZLog.i("playVideo url=" + cutForLog(url) + " headers=" + (headers == null ? "null" : headers.keySet().toString()));
         runOnUiThread(() -> {
             if (!isActivityActive() || mVideoView == null || mVodInfo == null
                     || mVodInfo.seriesMap == null || mVodInfo.playFlag == null
@@ -1318,8 +1319,11 @@ public class PlayActivity extends BaseActivity  implements View.OnClickListener 
                     errorWithRetry("解析错误", false);
                 } else {
                     boolean bParseWV = (rs.optInt("parse", 0) == 1);
+                    ZLog.i("playerContent 分支 parseWV=" + bParseWV + " url=" + cutForLog(rs.optString("url", "")));
                     if (bParseWV) {
                         String wvUrl = DefaultConfig.checkReplaceProxy(rs.optString("url", ""));
+                        // 网盘源常见：解析页需要登录态 → 把返回的 Cookie 先写进 WebView 的 cookie 罐
+                        applyHeaderCookiesToWebView(wvUrl, rs);
                         loadInWebView(wvUrl);
                     } else {
                         playVideo(rs.optString("url", ""), UiHelper.getHttpHeader(rs));
@@ -1439,6 +1443,37 @@ public class PlayActivity extends BaseActivity  implements View.OnClickListener 
                 }
             }
         });
+    }
+
+    /** 把返回头里的 Cookie 写进 WebView 的 cookie 罐（解析/登录页要用） */
+    private void applyHeaderCookiesToWebView(String url, JSONObject rs) {
+        try {
+            HashMap<String, String> headers = UiHelper.getHttpHeader(rs);
+            if (headers == null || url == null || !url.startsWith("http")) return;
+            String cookie = headers.get("Cookie");
+            if (cookie == null) cookie = headers.get("cookie");
+            String referer = headers.get("Referer");
+            if (referer == null) referer = headers.get("referer");
+            android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
+            cm.setAcceptCookie(true);
+            if (cookie != null) {
+                String[] parts = cookie.split(";");
+                for (String part : parts) {
+                    String kv = part.trim();
+                    if (kv.contains("=")) cm.setCookie(url, kv);
+                }
+            }
+            if (referer != null) cm.setCookie(url, "referer=" + referer);
+            cm.flush();
+            ZLog.i("解析页已注入 Cookie url=" + cutForLog(url) + " cookieLen=" + (cookie == null ? 0 : cookie.length()));
+        } catch (Throwable th) {
+            ZLog.e("applyHeaderCookiesToWebView 失败", th);
+        }
+    }
+
+    private static String cutForLog(String text) {
+        if (text == null) return "null";
+        return text.length() > 300 ? (text.substring(0, 300) + "…(" + text.length() + "B)") : text;
     }
 
     private boolean checkVideoFormat(String url) {
