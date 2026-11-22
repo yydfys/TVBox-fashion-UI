@@ -15,6 +15,7 @@ import com.github.tvbox.osc.ui.activity.UiHelper;
 import com.github.tvbox.osc.util.AdBlocker;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.HawkConfig;
+import com.github.tvbox.osc.util.ZLog;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -541,6 +542,7 @@ public class ApiConfig {
         if (NullUtil.isNull(jsonStr)) return;
         if (m_bParsed) return;
         L.d("parseSiteFile() start");
+        ZLog.i("parseSiteFile start url=" + apiUrl + " len=" + (jsonStr == null ? 0 : jsonStr.length()));
         LinkedHashMap<String, SiteBean> previousSites = new LinkedHashMap<>(mSiteBeanMap);
         List<ParseBean> previousParsers = new ArrayList<>(mParseBeanList);
         ParseBean previousDefault = mDefaultParseBean;
@@ -558,6 +560,7 @@ public class ApiConfig {
             mSpider = DefaultConfig.safeJsonString(jsonObject, "spider", "");
             spiderLoader = new SpiderLoader(mSpider);
             L.d("mSpider=" + mSpider);
+            ZLog.i("mSpider=" + mSpider);
             // 远端站点源
             if (jsonObject.has("sites") && jsonObject.get("sites").isJsonArray()) {
                 for (JsonElement opt : jsonObject.get("sites").getAsJsonArray()) {
@@ -582,12 +585,15 @@ public class ApiConfig {
                         mSiteBeanMap.put(siteKey, bean);
                     } catch (Throwable th) {
                         L.w("parseSiteFile skip invalid site: " + th.getMessage());
+                        ZLog.w("skip invalid site: " + th.getMessage());
                     }
                 }
             }
 
+            ZLog.i("sites parsed=" + mSiteBeanMap.size() + " keys=" + new ArrayList<>(mSiteBeanMap.keySet()));
             // 配置文件里多是盘搜类站点，补上内置的主流采集源并排到最前（分类页/搜索用它们）
             addExtraSites();
+            ZLog.i("after addExtraSites total=" + mSiteBeanMap.size());
 
             // 需要使用vip解析的flag
             mVipFlagList = DefaultConfig.safeJsonStringList(jsonObject, "flags");
@@ -651,6 +657,7 @@ public class ApiConfig {
             m_bParsed = false;
             searchSites.invalidateSearchSiteOrderCache();
             L.e(e);
+            ZLog.e("parseSiteFile FAILED -> 已回滚到旧站点（本条配置的站点全部不会出现）", e);
             return;
         }
         try {

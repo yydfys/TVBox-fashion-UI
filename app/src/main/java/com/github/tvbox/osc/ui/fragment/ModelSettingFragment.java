@@ -41,6 +41,7 @@ import com.github.tvbox.osc.util.PlayerHelper;
 import com.github.tvbox.osc.util.RemoteKeySound;
 import com.github.tvbox.osc.util.SeniorMode;
 import com.github.tvbox.osc.util.UpdateManager;
+import com.github.tvbox.osc.util.ZLog;
 import com.lcstudio.commonsurport.L;
 import com.lcstudio.commonsurport.util.NullUtil;
 import com.lcstudio.commonsurport.util.PhoneParams;
@@ -451,6 +452,9 @@ public class ModelSettingFragment extends BaseLazyFragment {
         findViewById(R.id.llHomeApi).setOnClickListener(v -> {
             FastClickCheckUtil.check(v);
             List<SiteBean> sites = ApiConfig.getInstance().getSiteBeanList();
+            StringBuilder sb = new StringBuilder();
+            for (SiteBean b : sites) sb.append(b.getKey()).append('/').append(b.getName()).append(" | ");
+            ZLog.i("首页数据源列表 count=" + sites.size() + " :: " + sb);
             if (NullUtil.isNull(sites)) return;
             if (sites.isEmpty() || !"".equals(sites.get(0).getKey())) {
                 SiteBean auto = new SiteBean();

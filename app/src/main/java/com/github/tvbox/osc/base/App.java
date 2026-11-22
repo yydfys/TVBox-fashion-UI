@@ -8,6 +8,7 @@ import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.OkGoHelper;
 import com.github.tvbox.osc.util.PlayerHelper;
 import com.github.tvbox.osc.util.SafeCrashHandler;
+import com.github.tvbox.osc.util.ZLog;
 import com.kingja.loadsir.core.LoadSir;
 import com.lcstudio.commonsurport.L;
 import com.lcstudio.commonsurport.MLog;
@@ -28,6 +29,8 @@ public class App extends MultiDexApplication {
         MLog.setContext(getApplicationContext());
         MLog.setLogEnable(false);
         L.setUp(false);//打开日志
+        ZLog.init(getApplicationContext()); // 文件日志：Android/data/<pkg>/files/logs/app.log
+        ZLog.i("App.onCreate pid=" + android.os.Process.myPid());
         // 用只落盘、不自动重启的崩溃处理器替换 aar 自带的 CrashHandler：
         // 后者的“崩溃后 2 秒自动拉起启动页”会把「设置→返回首页」的偶发崩溃放大成无限重启。
         SafeCrashHandler.install(getApplicationContext());
