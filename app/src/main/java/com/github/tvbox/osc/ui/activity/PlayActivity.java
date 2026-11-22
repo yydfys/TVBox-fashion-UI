@@ -1520,9 +1520,16 @@ public class PlayActivity extends BaseActivity  implements View.OnClickListener 
 
     private void configWebViewSys(WebView webView) {
         if (webView == null) return;
-        ViewGroup.LayoutParams layoutParams = Hawk.get(HawkConfig.DEBUG_OPEN, false)
-                ? new ViewGroup.LayoutParams(800, 400) :
-                new ViewGroup.LayoutParams(1, 1);
+        boolean debugOpen = Hawk.get(HawkConfig.DEBUG_OPEN, false);
+        ViewGroup.LayoutParams layoutParams;
+        if (debugOpen) {
+            // jar 自己弹的页面（网盘扫码/二维码）就画在这个系统 WebView 里；
+            // 原来写死 800x400，手机横屏高度只有约 360dp → 二维码下半部被屏幕裁掉。
+            android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+            layoutParams = new ViewGroup.LayoutParams(dm.widthPixels, dm.heightPixels);
+        } else {
+            layoutParams = new ViewGroup.LayoutParams(1, 1);
+        }
         webView.setFocusable(false);
         webView.setFocusableInTouchMode(false);
         webView.clearFocus();
@@ -1551,9 +1558,11 @@ public class PlayActivity extends BaseActivity  implements View.OnClickListener 
         settings.setDomStorageEnabled(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         settings.setSupportMultipleWindows(false);
-        settings.setLoadWithOverviewMode(true);
+        settings.setLoadWithOverviewMode(false);
         settings.setBuiltInZoomControls(true);
-        settings.setSupportZoom(false);
+        settings.setSupportZoom(true);
+        settings.setDisplayZoomControls(false);
+        settings.setTextZoom(100);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         }
