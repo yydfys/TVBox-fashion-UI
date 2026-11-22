@@ -18,6 +18,7 @@ import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.ui.activity.UiHelper;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.HawkConfig;
+import com.github.tvbox.osc.util.ZLog;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -398,8 +399,15 @@ public class SourceViewModel extends ViewModel {
                     sortJson = future.get(15, TimeUnit.SECONDS);
                 } catch (TimeoutException e) {
                     future.cancel(true);
-                } catch (InterruptedException | ExecutionException e) {
+                    ZLog.w("homeContent 超时(15s) key=" + sourceKey);
+                } catch (InterruptedException e) {
+                    ZLog.w("homeContent 被中断 key=" + sourceKey);
+                } catch (ExecutionException e) {
+                    Throwable c = e.getCause() != null ? e.getCause() : e;
+                    ZLog.e("homeContent 抛异常 key=" + sourceKey + " cls=" + c.getClass().getName(), c);
                 } finally {
+                    ZLog.i("homeContent 返回 key=" + sourceKey + " len=" + (sortJson == null ? -1 : sortJson.length())
+                            + " head=" + (sortJson == null ? "null" : sortJson.substring(0, Math.min(200, sortJson.length()))));
                     L.d("getSort() sortJson="+sortJson);
                     if (sortJson != null) {
                         AbsSortXml sortXml = sortJson(sortResult, sortJson,sourceKey);

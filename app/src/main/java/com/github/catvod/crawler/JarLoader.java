@@ -3,6 +3,7 @@ package com.github.catvod.crawler;
 import android.content.Context;
 
 import com.github.tvbox.osc.base.App;
+import com.github.tvbox.osc.util.ZLog;
 import com.lcstudio.commonsurport.L;
 
 import org.json.JSONObject;
@@ -33,6 +34,8 @@ public class JarLoader {
         boolean success = false;
         try {
             classLoader = newDexClassLoader(cacheFile);
+            ZLog.i("JarLoader.load 开始 cacheFile=" + cacheFile + " exists=" + new File(cacheFile).exists()
+                    + " size=" + new File(cacheFile).length());
             int count = 0;
             do {
                 try {
@@ -61,6 +64,9 @@ public class JarLoader {
                     Thread.sleep(200);
                 } catch (Throwable th) {
                     L.e("load "+th.getMessage());
+                    Throwable c = th;
+                    while (c instanceof java.lang.reflect.InvocationTargetException && c.getCause() != null) c = c.getCause();
+                    ZLog.e("JarLoader Init 轮次失败（第" + (count + 1) + "次）", c);
                 }
                 count++;
             } while (count < 5);
@@ -130,6 +136,9 @@ public class JarLoader {
                 return sp;
             } catch (Throwable th) {
                 L.e("getSpider " + th.getMessage());
+                Throwable c = th;
+                while (c instanceof java.lang.reflect.InvocationTargetException && c.getCause() != null) c = c.getCause();
+                ZLog.e("getSpider 失败 key=" + key + " cls=" + cls + " jar=" + jarPath, c);
             }
             return new SpiderNull();
         }
