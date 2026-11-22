@@ -55,6 +55,7 @@ import com.owen.tvrecyclerview.widget.V7LinearLayoutManager;
 import com.studio.osc.R;
 import com.uisupport.UiConstans;
 import com.github.tvbox.osc.util.UpdateManager;
+import com.github.tvbox.osc.util.ZLog;
 import com.uisupport.update.HttpUtil;
 import com.uisupport.update.ReportConfig;
 import com.uisupport.update.RspReportConfig;
@@ -1059,6 +1060,14 @@ public class HomeActivity extends BaseActivity implements View.OnClickListener {
             if (absXml != null && absXml.videoList != null && !absXml.videoList.isEmpty()) {
                 Hawk.put(categoryCacheKey(source) + "_recommendations", new Gson().toJson(absXml.videoList));
                 if (mFirstFragment != null) mFirstFragment.setmRecommendVideos(absXml.videoList);
+            } else if (absXml != null && absXml.classes != null && absXml.classes.sortList != null
+                    && !absXml.classes.sortList.isEmpty()) {
+                // 只返回 class、不返回 list 的源（配置中心类）：把分类铺成首页入口卡，避免首页整片空白
+                List<Movie.Video> entries = buildCategoryEntryVideos(source, absXml.classes.sortList);
+                if (!entries.isEmpty() && mFirstFragment != null) {
+                    ZLog.i("首页无推荐列表，用分类生成入口卡 key=" + source.getKey() + " count=" + entries.size());
+                    mFirstFragment.showCategoryEntries(entries);
+                }
             }
             if (freshCount < 5) scheduleCategoryRetry();
             else mHandler.removeCallbacks(categoryRetry);
@@ -1072,6 +1081,24 @@ public class HomeActivity extends BaseActivity implements View.OnClickListener {
     /**
      * 点播源数据加载后延时检查更新，减少与主页初始加载同时进行的工作。
      */
+    /** 把分类表转成首页入口卡（tag=folder → 点击进该分类） */
+    private List<Movie.Video> buildCategoryEntryVideos(SiteBean source, List<MovieSort.SortData> sorts) {
+        List<Movie.Video> out = new ArrayList<>();
+        if (sorts == null) return out;
+        for (MovieSort.SortData sort : sorts) {
+            if (sort == null || sort.id == null || sort.id.trim().isEmpty()) continue;
+            Movie.Video video = new Movie.Video();
+            video.id = sort.id;
+            video.name = sort.name;
+            video.tag = "folder";
+            video.sourceKey = source == null ? "" : source.getKey();
+            video.pic = "";
+            video.note = "";
+            out.add(video);
+        }
+        return out;
+    }
+
     private void checkUpdateIfSourceReady() {
         ApiConfig.getInstance().refreshStartupCaches();
         updateSourceReady = true;

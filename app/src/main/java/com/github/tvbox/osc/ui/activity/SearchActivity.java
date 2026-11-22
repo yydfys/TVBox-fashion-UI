@@ -46,6 +46,8 @@ import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.PosterPreloader;
 import com.github.tvbox.osc.util.SeniorMode;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
+import com.github.tvbox.osc.ui.dialog.ActionResultDialog;
+import com.github.tvbox.osc.util.ZLog;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -741,6 +743,19 @@ public class SearchActivity extends BaseActivity {
         if (searchResultAdapter == null || position < 0 || position >= searchResultAdapter.getData().size()) return;
         Movie.Video video = searchResultAdapter.getData().get(position);
         if (video == null) return;
+        // 「配置中心」类动作卡片：action 非空则直接调 spider.action() 弹配置窗，不进详情/目录
+        if (!TextUtils.isEmpty(video.action)) {
+            SiteBean actBean = TextUtils.isEmpty(video.sourceKey) ? null
+                    : ApiConfig.getInstance().getSiteBean(video.sourceKey);
+            if (actBean == null) actBean = ApiConfig.getInstance().getHomeBean();
+            if (actBean != null && sourceViewModel != null) {
+                final SiteBean fb = actBean;
+                ZLog.i("action 卡片 key=" + video.sourceKey + " act=" + video.action + " name=" + video.name);
+                sourceViewModel.action(fb, video.action, (json, act) ->
+                        runOnUiThread(() -> ActionResultDialog.show(SearchActivity.this, json)));
+                return;
+            }
+        }
         boolean opensFolder = isFolder(video) || isAggregateSearchCard(video);
         android.util.Log.i(TRACE_TAG, "click activity=" + System.identityHashCode(this)
                 + " position=" + position + " route=" + (opensFolder ? "folder" : "detail")

@@ -185,6 +185,19 @@ public class FirstFragment extends BaseLazyFragment implements View.OnClickListe
         return new FirstFragment().setmRecommendVideos(recVod);
     }
 
+    /**
+     * 「只返回 class、不返回 list」的源（如配置中心）：把分类铺成首页入口卡，
+     * 点卡片 = 进该分类（走已有的 folder 路由），分类里的 action 卡片点开即配置弹窗。
+     */
+    public void showCategoryEntries(List<Movie.Video> entries) {
+        if (entries == null || entries.isEmpty() || mAdapter == null) return;
+        mRecommendVideos = entries;
+        setHeader("配置中心", "共 " + entries.size() + " 项 · 点击进入");
+        showSuccess();
+        setHomeCards(entries);
+        resetCarouselState();
+    }
+
     public FirstFragment setmRecommendVideos(List<Movie.Video> recVod) {
         boolean changed = !new Gson().toJson(mRecommendVideos).equals(new Gson().toJson(recVod));
         this.mRecommendVideos = recVod;
