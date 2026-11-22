@@ -20,10 +20,7 @@ import okhttp3.Response;
 
 /** Public release traffic only. Never uses the playback client's relaxed TLS settings. */
 public final class UpdateClient {
-    /** 主更新源：我们自己的 NAS 清单（国内直连，不依赖 GitHub）。 */
-    public static final String MANIFEST_URL_PRIMARY =
-            "https://yydf.iepose.cn/youer/TVBox-fashion-UI/releases/update.json";
-    /** 备用更新源：我们自己的 GitHub 发行版清单（带加速前缀）。 */
+    /** 更新源：自家 GitHub 发行版清单（按加速前缀依次尝试，最后直连）。 */
     public static final String GITHUB_REPOSITORY = "https://github.com/yydfys/TVBox-fashion-UI";
     public static final String GITHUB_MANIFEST_URL = GITHUB_REPOSITORY + "/releases/latest/download/update.json";
     private static final String[] GITHUB_PREFIXES = {"https://gh-proxy.com/", "https://ghfast.top/", ""};
@@ -119,11 +116,7 @@ public final class UpdateClient {
     public Info fetchInfo() throws IOException {
         IOException last = null;
         Info newest = null;
-        // 1) 自建清单（NAS）
-        try {
-            newest = readManifest(MANIFEST_URL_PRIMARY);
-        } catch (IOException e) { last = e; }
-        // 2) 备用：自家 GitHub 发行版清单（含加速前缀）
+        // 自家 GitHub 发行版清单，依次走加速前缀，最后直连
         for (String prefix : GITHUB_PREFIXES) {
             checkCancelled();
             try {
@@ -137,29 +130,6 @@ public final class UpdateClient {
         checkCancelled();
         if (newest != null) return newest;
         throw new IOException("无法检查更新，请检查网络后重试", last);
-    }
-
-    private static final class Release {
-        String tag_name;
-        boolean prerelease;
-    }
-
-    private Info readGiteeRelease() throws IOException {
-        Release release;
-        try {
-            release = new Gson().fromJson(readMetadata(GITEE_LATEST_RELEASE_URL), Release.class);
-        } catch (RuntimeException e) {
-            throw new IOException("发行版信息格式不正确", e);
-        }
-        if (release == null || release.prerelease || release.tag_name == null
-                || !release.tag_name.matches("v[0-9]+\\.[0-9]+\\.[0-9]+")) {
-            throw new IOException("没有可用的正式发行版");
-        }
-        Info info = readManifest(GITEE_REPOSITORY + "/releases/download/" + release.tag_name + "/update.json");
-        if (!release.tag_name.equals("v" + info.versionName)) {
-            throw new IOException("发行版与更新清单版本不一致");
-        }
-        return info;
     }
 
     private Info readManifest(String url) throws IOException {
