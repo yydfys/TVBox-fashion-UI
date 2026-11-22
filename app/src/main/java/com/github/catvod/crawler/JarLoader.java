@@ -82,7 +82,9 @@ public class JarLoader {
         if (!cacheDir.exists()) {
             cacheDir.mkdirs();
         }
-        return new DexClassLoader(cacheFile, cacheDir.getAbsolutePath(), null, App.getInstance().getClassLoader());
+        // 第三个参数原本是 null；护壳加固源（如 csp_PanConfigGuard）会把 assets 里的 .so 解到该目录，
+        // 再用 System.loadLibrary 加载，缺 librarySearchPath 就会 UnsatisfiedLinkError → 首页/分类全空。
+        return new DexClassLoader(cacheFile, cacheDir.getAbsolutePath(), cacheDir.getAbsolutePath(), App.getInstance().getClassLoader());
     }
 
     /**
