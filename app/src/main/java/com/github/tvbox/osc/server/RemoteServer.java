@@ -106,8 +106,8 @@ public class RemoteServer extends NanoHTTPD {
                     }
                 }
                 if (fileName.equals("/proxy")) {
-                    ZLog.i("/proxy 请求 params=" + (params == null ? "null" : params.toString()));
                     Map<String, String> params = session.getParms();
+                    ZLog.i("/proxy 请求 params=" + (params == null ? "null" : params.toString()));
                     if (params.containsKey("do")) {
                         Object[] rs = ApiConfig.getInstance().proxyLocal(params);
                         try {

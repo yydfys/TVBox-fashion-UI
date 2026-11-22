@@ -166,11 +166,12 @@ public class ActionWebActivity extends Activity {
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         bar.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        if (!TextUtils.isEmpty(url)) {
+        final String openUrl = url;
+        if (!TextUtils.isEmpty(openUrl)) {
             TextView open = chip("浏览器打开");
             open.setOnClickListener(v -> {
                 try {
-                    Intent it = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    Intent it = new Intent(Intent.ACTION_VIEW, Uri.parse(openUrl));
                     startActivity(it);
                     finish();
                 } catch (Throwable th) {
