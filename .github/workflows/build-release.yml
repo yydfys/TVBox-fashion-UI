@@ -116,8 +116,8 @@ jobs:
               "versionCode": vc,
               "versionName": vn,
               "changelog": notes,
-              "apkUrl": "https://yydf.iepose.cn/youer/TVBox-fashion-UI/releases/" + name,
-              "apkUrlFallback": "https://github.com/yydfys/TVBox-fashion-UI/releases/download/v%s-%d/%s" % (vn, vc, name),
+              "apkUrl": "https://github.com/yydfys/TVBox-fashion-UI/releases/download/v%s-%d/%s" % (vn, vc, name),
+              "apkUrlFallback": "https://gh-proxy.com/https://github.com/yydfys/TVBox-fashion-UI/releases/download/v%s-%d/%s" % (vn, vc, name),
               "sha256": sha,
               "size": size,
           }
