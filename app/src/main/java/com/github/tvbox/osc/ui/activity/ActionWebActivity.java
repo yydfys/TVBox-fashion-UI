@@ -42,6 +42,10 @@ public class ActionWebActivity extends Activity {
     private static final String EXTRA_JSON = "action_json";
 
     private WebView mWebView;
+    private String mUrl = "";
+    private String mHtml = "";
+    /** true = 只显示二维码（铺满屏）；false = 显示整页 */
+    private boolean mQrOnly = true;
 
     public static void start(Context context, String json) {
         if (context == null || TextUtils.isEmpty(json)) return;
@@ -81,6 +85,7 @@ public class ActionWebActivity extends Activity {
             }
         } catch (Throwable ignored) {
         }
+        mUrl = url;
         ZLog.i("BUILD=" + BUILD_TAG + " action 返回 url=" + url
                 + " cookieGroups=" + (cookie == null ? 0 : cookie.length())
                 + " msgLen=" + (msg == null ? 0 : msg.length())
@@ -123,23 +128,26 @@ public class ActionWebActivity extends Activity {
             mWebView.setWebViewClient(new WebViewClient() {
                 @Override
                 public void onPageFinished(WebView view, String u) {
-                    injectFit(view);
+                    if (mQrOnly) showQrOnly(view);
+                    else injectFit(view);
                 }
             });
             applyCookies(url, cookie);
             root.addView(mWebView, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             if (!TextUtils.isEmpty(url)) {
+                mHtml = "";
                 mWebView.loadUrl(url);
             } else if (hasHtml) {
-                mWebView.loadDataWithBaseURL(null, wrapHtml(msg), "text/html", "utf-8", null);
+                mHtml = wrapHtml(msg);
+                mWebView.loadDataWithBaseURL(null, mHtml, "text/html", "utf-8", null);
             } else {
                 String src = msg.trim();
                 if (!src.startsWith("data:") && !src.startsWith("http")) {
                     src = "data:image/png;base64," + src.replaceAll("\\s", "");
                 }
-                mWebView.loadDataWithBaseURL(null, wrapHtml("<img src=\"" + src + "\"/>"),
-                        "text/html", "utf-8", null);
+                mHtml = wrapHtml("<img src=\"" + src + "\"/>");
+                mWebView.loadDataWithBaseURL(null, mHtml, "text/html", "utf-8", null);
             }
         } else {
             ScrollView sv = new ScrollView(this);
@@ -183,6 +191,17 @@ public class ActionWebActivity extends Activity {
             olp.leftMargin = dp(8);
             bar.addView(open, olp);
         }
+        TextView mode = chip(mQrOnly ? "看整页" : "只看二维码");
+        mode.setOnClickListener(v -> {
+            mQrOnly = !mQrOnly;
+            mode.setText(mQrOnly ? "看整页" : "只看二维码");
+            reloadPage();
+        });
+        LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        mlp.leftMargin = dp(8);
+        bar.addView(mode, mlp);
+
         TextView close = chip("关闭");
         close.setOnClickListener(v -> finish());
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
@@ -208,6 +227,54 @@ public class ActionWebActivity extends Activity {
         tv.setBackgroundColor(Color.parseColor("#66FFFFFF"));
         tv.setFocusable(true);
         return tv;
+    }
+
+    /**
+     * 只保留页面里面积最大的那张图/画布（二维码），铺满屏幕并按 contain 缩放。
+     * 手机横屏只有 360dp 高度，整页渲染必裁二维码下半截，所以这里直接把页面塌缩成一张图。
+     */
+    private void showQrOnly(WebView view) {
+        try {
+            String js = "(function(){try{"
+                    + "var best=null,area=0;"
+                    + "var list=document.querySelectorAll('img,canvas,svg');"
+                    + "for(var i=0;i<list.length;i++){var el=list[i];"
+                    + "var r=el.getBoundingClientRect();var a=Math.max(r.width,0)*Math.max(r.height,0);"
+                    + "if(a>area){area=a;best=el;}}"
+                    + "if(!best){return 'none';}"
+                    + "var src='';"
+                    + "if(best.tagName==='CANVAS'){try{src=best.toDataURL('image/png');}catch(e){src='';}}"
+                    + "else if(best.tagName==='IMG'){src=best.currentSrc||best.src||'';}"
+                    + "else {src='';}"
+                    + "if(!src&&best.tagName==='SVG'){src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(best));}"
+                    + "if(!src){return 'none';}"
+                    + "var html='<html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=8,user-scalable=yes\">'"
+                    + "+'<style>html,body{margin:0;padding:0;background:#0E1013;height:100%;overflow:hidden;}'"
+                    + "img{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);"
+                    + "max-width:100vw;max-height:100vh;width:auto;height:auto;image-rendering:pixelated;}</style></head>'"
+                    + "+'<body><img src=\"'+src+'\"></body></html>';"
+                    + "document.open();document.write(html);document.close();"
+                    + "return 'ok';}catch(e){return 'err';}})();";
+            view.evaluateJavascript(js, value -> {
+                ZLog.i("QR 提取结果=" + value);
+                // 页面里没有可提取的图（纯文字/表格类返回）→ 退回整页自适应
+                if (value == null || value.contains("none") || value.contains("err")) {
+                    injectFit(view);
+                }
+            });
+        } catch (Throwable th) {
+            ZLog.e("showQrOnly failed", th);
+        }
+    }
+
+    /** 在「只看二维码 / 看整页」之间切换时重新加载 */
+    private void reloadPage() {
+        if (mWebView == null) return;
+        if (!TextUtils.isEmpty(mUrl)) {
+            mWebView.loadUrl(mUrl);
+        } else if (!TextUtils.isEmpty(mHtml)) {
+            mWebView.loadDataWithBaseURL(null, mHtml, "text/html", "utf-8", null);
+        }
     }
 
     private void injectFit(WebView view) {
