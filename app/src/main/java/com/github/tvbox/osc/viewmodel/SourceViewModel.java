@@ -1203,6 +1203,8 @@ public class SourceViewModel extends ViewModel {
                     Spider spider = ApiConfig.getInstance().getCSP(sourceBean);
                     if (spider != null) {
                         String json = spider.playerContent(playFlag, url, ApiConfig.getInstance().getmVipFlagList());
+                        ZLog.i("playerContent key=" + sourceKey + " flag=" + playFlag
+                                + " url=" + cutForLog(url) + " -> " + cutForLog(json));
                         if (json != null && !json.trim().isEmpty()) {
                             JSONObject result = new JSONObject(json);
                             result.put("key", url);
@@ -1262,7 +1264,10 @@ public class SourceViewModel extends ViewModel {
                 if (spider == null) {
                     throw new IllegalStateException("播放源未初始化");
                 }
-                return spider.playerContent(playFlag, url, ApiConfig.getInstance().getmVipFlagList());
+                String out = spider.playerContent(playFlag, url, ApiConfig.getInstance().getmVipFlagList());
+                ZLog.i("playerContent key=" + sourceKey + " flag=" + playFlag
+                        + " url=" + cutForLog(url) + " -> " + cutForLog(out));
+                return out;
             });
             activePlayContentTask = task;
             Thread spiderThread = new Thread(task, "play-content-" + sourceKey);

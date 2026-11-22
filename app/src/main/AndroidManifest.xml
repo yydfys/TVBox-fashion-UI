@@ -43,6 +43,11 @@
         </activity>
 
         <activity
+            android:name="com.github.tvbox.osc.ui.activity.ActionWebActivity"
+            android:label="配置中心"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen" />
+        <activity
             android:name="com.github.tvbox.osc.ui.activity.LivePlayActivity"
             android:label="电视直播"
             android:screenOrientation="landscape" />

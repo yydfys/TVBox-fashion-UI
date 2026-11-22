@@ -341,13 +341,8 @@ public class ActionResultDialog extends Dialog {
 
     public static void show(Activity activity, String json) {
         if (activity == null || activity.isFinishing()) return;
-        try {
-            ActionResultDialog d = new ActionResultDialog(activity, json);
-            d.setOwnerActivity(activity);
-            d.show();
-        } catch (Throwable th) {
-            L.w("ActionResultDialog show failed: " + th);
-        }
+        // 改用独立全屏页：壳整体锁横屏，Dialog 在手机上只有 360dp 高度，二维码底部会被裁
+        com.github.tvbox.osc.ui.activity.ActionWebActivity.start(activity, json);
     }
 
     /** 供 Fragment 等非 Activity 上下文使用 */

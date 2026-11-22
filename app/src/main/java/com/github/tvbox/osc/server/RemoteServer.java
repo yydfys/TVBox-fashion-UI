@@ -10,6 +10,7 @@ import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.event.ServerEvent;
 import com.github.tvbox.osc.util.FileUtils;
 import com.github.tvbox.osc.util.OkGoHelper;
+import com.github.tvbox.osc.util.ZLog;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.studio.osc.R;
@@ -105,6 +106,7 @@ public class RemoteServer extends NanoHTTPD {
                     }
                 }
                 if (fileName.equals("/proxy")) {
+                    ZLog.i("/proxy 请求 params=" + (params == null ? "null" : params.toString()));
                     Map<String, String> params = session.getParms();
                     if (params.containsKey("do")) {
                         Object[] rs = ApiConfig.getInstance().proxyLocal(params);
