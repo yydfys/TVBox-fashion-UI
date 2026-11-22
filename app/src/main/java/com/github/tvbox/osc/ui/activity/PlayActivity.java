@@ -342,9 +342,20 @@ public class PlayActivity extends BaseActivity  implements View.OnClickListener 
                     url = mPlayBean.url;
                 }
             }
-            if (!NullUtil.isNull(url) && DefaultConfig.isVideoFormat2(url)) {
-                playVideo(url, mPlayBean.headersMap);
-            } else if (!NullUtil.isNull(url) && DefaultConfig.isVideoFormat(url)) {
+            // parse=0 表示源已经给出可直接播放的地址，不该再按后缀判断（网盘源的
+            // http://127.0.0.1:<port>/kaiser?url=… 这类本机代理地址没有 .m3u8/.mp4 后缀，
+            // 以前会被误丢进解析器 → 解析不出 → playVideo(null)，网盘永远播不了）
+            boolean isLocalEndpoint = !NullUtil.isNull(url)
+                    && (url.contains("127.0.0.1") || url.contains("localhost") || url.startsWith("proxy://"));
+            boolean directPlay = !NullUtil.isNull(url)
+                    && (!mPlayBean.bNeedParse
+                        || DefaultConfig.isVideoFormat2(url)
+                        || DefaultConfig.isVideoFormat(url)
+                        || isLocalEndpoint);
+            ZLog.i("播放决策 url=" + cutForLog(url) + " bNeedParse=" + mPlayBean.bNeedParse
+                    + " localEndpoint=" + isLocalEndpoint + " directPlay=" + directPlay
+                    + " headers=" + (mPlayBean.headersMap == null ? "null" : mPlayBean.headersMap.keySet().toString()));
+            if (directPlay) {
                 playVideo(url, mPlayBean.headersMap);
             } else {
                 boolean bUseJxList = (mPlayBean.playUrl.isEmpty() && ApiConfig.getInstance().getmVipFlagList().contains(mPlayBean.flag)) || mPlayBean.bNeedJx;
