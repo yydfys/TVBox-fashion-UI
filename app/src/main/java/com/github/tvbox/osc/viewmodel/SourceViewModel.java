@@ -1566,4 +1566,10 @@ public class SourceViewModel extends ViewModel {
             }
         }
     }
+
+    /** 日志用：截断过长字符串，避免 app.log 爆掉 */
+    private static String cutForLog(String text) {
+        if (text == null) return "null";
+        return text.length() > 600 ? (text.substring(0, 600) + "…(" + text.length() + "B)") : text;
+    }
 }
