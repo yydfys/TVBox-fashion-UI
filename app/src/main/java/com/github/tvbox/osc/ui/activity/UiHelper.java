@@ -12,6 +12,7 @@ import com.github.tvbox.osc.bean.PlayBean;
 import com.github.tvbox.osc.bean.SiteBean;
 import com.github.tvbox.osc.server.ControlManager;
 import com.github.tvbox.osc.util.HawkConfig;
+import com.github.tvbox.osc.util.ZLog;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -174,24 +175,52 @@ public class UiHelper {
         return text != null && query != null && text.contains(query);
     }
 
+    /**
+     * 解析 playerContent 返回里的 header。
+     * 注意：加固源（配置中心/网盘源）常把 header 返回成 **JSON 字符串**，
+     * 老代码只用 getJSONObject()，遇到字符串就抛异常并静默返回 null →
+     * 网盘直链完全拿不到 Cookie，播放必然失败。这里两种形态都支持。
+     */
     public static HashMap<String, String> getHttpHeader(JSONObject rs){
         HashMap<String, String> headers = null;
-        if (rs.has("header")) {
-            try {
-                JSONObject hds = rs.getJSONObject("header");
+        if (rs == null || !rs.has("header")) {
+            ZLog.w("播放头为空：返回里没有 header 字段");
+            return null;
+        }
+        try {
+            Object raw = rs.opt("header");
+            JSONObject hds = null;
+            if (raw instanceof JSONObject) {
+                hds = (JSONObject) raw;
+            } else if (raw != null) {
+                String str = String.valueOf(raw).trim();
+                if (str.startsWith("\"") && str.endsWith("\"") && str.length() > 1) {
+                    str = str.substring(1, str.length() - 1).replace("\\\"", "\"");
+                }
+                if (!NullUtil.isNull(str) && str.startsWith("{")) {
+                    hds = new JSONObject(str);
+                }
+            }
+            if (hds != null) {
                 Iterator<String> keys = hds.keys();
                 while (keys.hasNext()) {
                     String key = keys.next();
-                    if (headers == null) {
-                        headers = new HashMap<>();
-                    }
+                    if (headers == null) headers = new HashMap<>();
                     headers.put(key, hds.optString(key));
                 }
-            } catch (Throwable th) {
-                L.e(th.getMessage());
             }
+        } catch (Throwable th) {
+            L.e(th.getMessage());
+            ZLog.e("getHttpHeader 解析失败", th);
         }
-        return  headers;
+        if (headers != null) {
+            String cookie = headers.get("Cookie");
+            if (cookie == null) cookie = headers.get("cookie");
+            ZLog.i("播放头已应用 keys=" + headers.keySet() + " cookieLen=" + (cookie == null ? 0 : cookie.length()));
+        } else {
+            ZLog.w("播放头解析结果为空：header=" + rs.opt("header"));
+        }
+        return headers;
     }
     public static HttpHeaders getHttpHeader(ParseBean parseBean){
         HttpHeaders reqHeaders = new HttpHeaders();
@@ -245,6 +274,19 @@ public class UiHelper {
         playBean.url = info.optString("url");
         if (info.has("header")) {
             try {
+                // header 可能是 JSONObject，也可能是 JSON 字符串，两种都收
+                Object hraw = info.opt("header");
+                if (hraw instanceof JSONObject) {
+                    JSONObject hobj = (JSONObject) hraw;
+                    Iterator<String> hit = hobj.keys();
+                    playBean.headersMap = new HashMap<>();
+                    while (hit.hasNext()) {
+                        String hk = hit.next();
+                        playBean.headersMap.put(hk, hobj.optString(hk));
+                    }
+                    ZLog.i("getPlayBean 头已应用 keys=" + playBean.headersMap.keySet());
+                    return playBean;
+                }
                 String headerStr= info.optString("header");
                 L.d("headerStr="+headerStr);
                 if(!NullUtil.isNull(headerStr)) {
