@@ -790,6 +790,9 @@ public class PlayActivity extends BaseActivity  implements View.OnClickListener 
     private void playVideo(final String url, HashMap<String, String> headers) {
         L.d("playVideo() stop if url==null, url=" + url);
         ZLog.i("playVideo url=" + cutForLog(url) + " headers=" + (headers == null ? "null" : headers.keySet().toString()));
+        if (url != null && (url.contains("127.0.0.1") || url.contains("localhost"))) {
+            probeLocalUrl(url, headers);
+        }
         runOnUiThread(() -> {
             if (!isActivityActive() || mVideoView == null || mVodInfo == null
                     || mVodInfo.seriesMap == null || mVodInfo.playFlag == null
@@ -1444,6 +1447,53 @@ public class PlayActivity extends BaseActivity  implements View.OnClickListener 
                 }
             }
         });
+    }
+
+    /**
+     * 探针：网盘源的地址常是 jar 自己开的本机 HTTP 服务（如 http://127.0.0.1:30175/kaiser?url=…）。
+     * 播放失败时先确认这个端口到底有没有在监听、回了什么状态码，避免盲改。
+     */
+    private void probeLocalUrl(final String url, final HashMap<String, String> headers) {
+        new Thread(() -> {
+            java.net.HttpURLConnection conn = null;
+            try {
+                java.net.URL u = new java.net.URL(url);
+                conn = (java.net.HttpURLConnection) u.openConnection();
+                conn.setConnectTimeout(4000);
+                conn.setReadTimeout(8000);
+                conn.setRequestProperty("Range", "bytes=0-1023");
+                if (headers != null) {
+                    for (java.util.Map.Entry<String, String> e : headers.entrySet()) {
+                        try {
+                            conn.setRequestProperty(e.getKey(), e.getValue());
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
+                int code = conn.getResponseCode();
+                String ctype = conn.getContentType();
+                int clen = conn.getContentLength();
+                String acceptRanges = conn.getHeaderField("Accept-Ranges");
+                String head = "";
+                try {
+                    java.io.InputStream is = code >= 400 ? conn.getErrorStream() : conn.getInputStream();
+                    if (is != null) {
+                        byte[] buf = new byte[200];
+                        int n = is.read(buf);
+                        if (n > 0) head = new String(buf, 0, n, "UTF-8").replaceAll("[\r\n]", " ");
+                        is.close();
+                    }
+                } catch (Throwable ignored) {
+                }
+                ZLog.i("本机代理探测 " + u.getHost() + ":" + u.getPort() + " code=" + code
+                        + " ctype=" + ctype + " clen=" + clen + " ranges=" + acceptRanges
+                        + " head=" + cutForLog(head));
+            } catch (Throwable th) {
+                ZLog.e("本机代理探测失败（端口无监听/连接被拒） " + cutForLog(url), th);
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        }).start();
     }
 
     /** 把返回头里的 Cookie 写进 WebView 的 cookie 罐（解析/登录页要用） */
